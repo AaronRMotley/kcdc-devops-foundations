@@ -1,0 +1,90 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['infra/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test --configuration Release
+      - run: dotnet publish src/QuoteBoard.Web -c Release -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: publish/
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://app-quoteboard-${{ vars.NAME_SUFFIX }}-staging.azurewebsites.net
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: publish
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-quoteboard-${{ vars.NAME_SUFFIX }}
+          slot-name: staging
+          package: publish
+
+      - name: Smoke test staging
+        run: |
+          URL=https://app-quoteboard-${{ vars.NAME_SUFFIX }}-staging.azurewebsites.net/health
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+            if [ "$CODE" = "200" ]; then echo "Healthy after $i checks"; exit 0; fi
+            echo "Attempt $i: HTTP $CODE — waiting 10s"; sleep 10
+          done
+          echo "Staging never became healthy"; exit 1
+
+  release-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app-quoteboard-${{ vars.NAME_SUFFIX }}.azurewebsites.net
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Swap staging → production (blue/green)
+        run: |
+          az webapp deployment slot swap \
+            --resource-group rg-quoteboard-${{ vars.NAME_SUFFIX }} \
+            --name app-quoteboard-${{ vars.NAME_SUFFIX }} \
+            --slot staging --target-slot production
+
+      - name: Smoke test production
+        run: |
+          URL=https://app-quoteboard-${{ vars.NAME_SUFFIX }}.azurewebsites.net/health
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+            if [ "$CODE" = "200" ]; then echo "Healthy after $i checks"; exit 0; fi
+            echo "Attempt $i: HTTP $CODE — waiting 10s"; sleep 10
+          done
+          echo "Production never became healthy"; exit 1
