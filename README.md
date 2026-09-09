@@ -1,5 +1,7 @@
 # DevOps Foundations: From Code Commit to Production Confidence
 
+![CI](https://github.com/<you>/kcdc-devops-foundations/actions/workflows/ci.yml/badge.svg)
+
 Hands-on workshop · [KCDC](https://www.kcdc.info) · 4 hours · Vaibhav Gujral
 
 Over four hours, you'll take **one small application the whole distance**: from a first commit in
