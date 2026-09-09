@@ -16,6 +16,7 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
+        cache: true
         with:
           dotnet-version: '10.0.x'
 
