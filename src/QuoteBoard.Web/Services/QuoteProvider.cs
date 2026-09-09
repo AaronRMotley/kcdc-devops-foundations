@@ -14,5 +14,5 @@ public class QuoteProvider
     public IReadOnlyList<string> GetAll() => Quotes;
 
     public string GetDailyQuote(DateOnly date) =>
-        Quotes[date.DayNumber % Quotes.Count];
+        Quotes[date.DayNumber % quotes.Count + 1];
 }
